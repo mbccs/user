@@ -1,8 +1,316 @@
-. "C:\Scripts\UserFunctions.ps1"
+<#
+
+.SYNOPSIS
+  User Offboarding 
+.DESCRIPTION
+  Assists technical resource with properly offboarding a user
+.PARAMETER
+    
+.INPUTS
+  
+.OUTPUTS
+  Log file stored in C:\Temp
+.NOTES
+  Version:        1.0
+  Author:         Jigar Shah
+  Creation Date:  August 1, 2018
+  Purpose/Change: Initial script development
+ 
+.EXAMPLE
+  
+
+#>
+
+
+#####################
+##### FUNCTIONS #####
+
+
+
+function ConnectMsol {
+    Import-Module MSOnline -ErrorAction SilentlyContinue
+    if (!(Get-Module MSOnline)) {
+        Write-Host "MSOnline Module Not Found. Starting Download..."
+        $source = "https://download.microsoft.com/download/5/0/1/5017D39B-8E29-48C8-91A8-8D0E4968E6D4/en/msoidcli_64.msi"
+        $destination = "C:\temp"
+        $filename = $source.Split("/")[-1]
+
+        try {
+            Start-BitsTransfer $source -Destination $destination
+            Write-Host "Completed download from $($source) and saved to $($destination)."
+        }
+        catch {
+            Write-Host "Unable to download file from $($source): $($_.Exception.Message)"
+            Write-Host "Please download and install the Microsoft Online Services Sign-In Assistant for IT Professionals manually. Exiting."
+            exit;
+        }
+
+        try {
+            if (Test-Path -Path "$($destination)`\$($filename)") {
+                $ArgsInstallation = @(
+                    "/i"
+                    ('"{0}"' -f "$($destination)`\$($filename)")
+                    "ADDLOCAL=ALL"
+                    "ACCEPT=YES"
+                    "/qb"
+                    "/norestart"
+                )
+                Start-Process msiexec.exe -ArgumentList $ArgsInstallation -Wait -Verbose
+                Write-Host "Completed installation of $($filename)"
+
+                Write-Host "Installing NuGet Package Provider..."
+                Start-Process Install-PackageProvider -Name NuGet -Force -Wait
+                Write-Host "Installed NuGet Package Provider."
+                Write-Host "Installing MSOnline Module..."
+                Install-Module MSOnline -Confirm:$false -Force -Wait
+                Write-Host "Installed MSOnline Module."
+            }
+        }
+        catch {
+            Write-Host "Unable to install $($filename): $($_.Exception.Message)"
+            Write-Host "Please complete installation manually. Exiting."
+            exit;
+        }
+    }
+    else { Write-Host "MSOnline Module is installed." }
+
+    Import-Module MSOnline
+
+    Write-Host "`nPlease submit credentials to connect to Office 365."
+    $adminCredential = Get-Credential
+
+    Write-Host "`nConnecting to AAD Powershell Service"
+    Connect-MsolService -Credential $adminCredential -ErrorAction SilentlyContinue 
+
+    return $adminCredential
+}
+
+function Reset-AD-Password($upn) {
+    $Password = ([char[]]([char]33..[char]95) + ([char[]]([char]97..[char]126)) + 0..9 | sort {Get-Random})[0..14] -join ''
+    $SecPassword = ConvertTo-SecureString -String $Password -AsPlainText -Force
+
+    $user = get-aduser -filter { UserPrincipalName -like $upn } 
+    $user | Set-ADAccountPassword -Reset -NewPassword $SecPassword
+    $user | Set-ADUser -ChangePasswordAtLogon $true   
+
+    Write-Host "The password for the user account $upn has been set to be $Password.  Make sure you record this and share with the user, or be ready to reset the password again.  They will have to reset their password on the next logon."
+}
+
+function Reset-AAD-Password($upn) {
+    $Password = ([char[]]([char]33..[char]95) + ([char[]]([char]97..[char]126)) + 0..9 | sort {Get-Random})[0..14] -join ''
+    $SecPassword = ConvertTo-SecureString -String $Password -AsPlainText -Force
+
+    Set-MsolUserPassword –UserPrincipalName $upn –NewPassword $secPassword -ForceChangePassword $True
+    Write-Host "The password for the account $upn has been set to be $Password. Make sure you record this and share with the user, or be ready to reset the password again. They will have to reset their password on the next logon."
+
+    Set-MsolUser -UserPrincipalName $upn -StrongPasswordRequired $True
+    Write-Host "This user's account has also been set to require a strong password."
+
+}
+
+function Sync-Password($adsync) {
+    try {
+        Invoke-Command -ComputerName $adsync -ScriptBlock { Start-ADSyncSyncCycle -PolicyType Delta } 
+    }
+    catch {
+        Write-Host "Unable to complete synchronization request.  Please perform sync manually. "
+    }        
+}
+
+Function BlockUser($upn) {
+    Set-MsolUser –UserPrincipalName $upn –blockcredential $true
+}
+
+Function DiableUserConnections($upn){
+    Set-CASMailbox $upn -OWAEnabled $False -ActiveSyncEnabled $False –MAPIEnabled:$false -IMAPEnabled:$false -PopEnabled:$false 
+}
+
+Function GetUserDevices($upn){  
+    $userMobileDevice = Get-MobileDevice -Mailbox $upn
+    return $userMobileDevice
+}
+
+Function RemoveDevices($userMobileDevice){
+    
+    if (!$userMobileDevice) { return 0; }
+    else{
+        $i = 0
+        while ($i -lt $userMobileDevice.length){ Remove-MobileDevice -Identity $userMobileDevice[$i]; $i++ }
+        return $i
+    }
+}
+
+Function RedirectEmail($redirectFrom,$redirectTo){
+    $currentDate = (Get-Date).ToString("yyyyMMdd")
+    $ruleName = "EOE Forward created on $currentDate from $redirectFrom to $redirectTo"
+    New-TransportRule -Name $ruleName -SentTo $redirectFrom -RedirectMessageTo $redirectTo
+}
+
+function Remove-MailboxDelegates($upn) {
+    #Write-Host "`nRemoving Mailbox Delegate Permissions for the target user $upn."
+
+    $mailboxDelegates = Get-MailboxPermission -Identity $upn | Where-Object {($_.IsInherited -ne "True") -and ($_.User -notlike "*SELF*")}
+    Get-MailboxPermission -Identity $upn | Where-Object {($_.IsInherited -ne "True") -and ($_.User -notlike "*SELF*")}
+    
+    foreach ($delegate in $mailboxDelegates) {
+        Remove-MailboxPermission -Identity $upn -User $delegate.User -AccessRights $delegate.AccessRights -InheritanceType All -Confirm:$false
+    }
+
+    #TO DO: Need to figure out how to check delegate permissions set on a all the folders for the user, then remove them. Looks to be a user-only cmdlet permission set
+    #$mailboxFolders = Get-MailboxFolder -Identity admin -Recurse
+    #foreach ($folder in $mailboxFolders) 
+    #{
+    #    $thisUpnFolder = $upn + ":\" + $folder.FolderPath
+    #    Get-MailboxFolderPermission -Identity $thisUpnFolder | Where-Object {($_.AccessRights -ne "None")}
+    #Remove-MailboxFolderPermission: https://technet.microsoft.com/en-us/library/dd351181(v=exchg.160).aspx
+}
+
+function Add-MailboxDelegate($upn,$delegateUser){
+    Add-MailboxPermission -Identity $upn -User $delegateUser -AccessRights FullAccess -InheritanceType All
+    Write-Host "$delegateUser has been given Mailbox Delegate Permissions for the target user $upn."
+    Get-MailboxPermission -Identity $upn | Where-Object {($_.IsInherited -ne "True") -and ($_.User -notlike "*SELF*")}
+}
+
+Function Add-SMTP($upn,$smtp){
+    Set-ADUser -Identity $upn -Add @{Proxyaddresses="SMTP:"+$smtp}
+}
+
+Function Remove-SMTP($upn,$smtp){
+    Set-ADUser -Identity $upn -Remove @{Proxyaddresses="SMTP:"+$smtp}
+}
+
+Function RestrictEmail ($upn){
+    Set-Mailbox -Identity $upn -AcceptMessagesOnlyFrom @{add="Administrator"}
+}
+
+Function Set-AutoResponse-Transport ($upn,$message){
+    $currentDate = (Get-Date).ToString("yyyyMMdd")
+    $ruleName = "EOE Auto-responder created on $currentDate for $upn"
+    New-TransportRule -Name $ruleName -SentTo $upn -RejectMessageReasonText $message
+}
+
+Function Set-AutoResponse-Mailbox ($upn,$message){
+    Set-MailboxAutoReplyConfiguration -Identity $upn -AutoReplyState Enabled -InternalMessage $message -ExternalMessage $message
+}
+
+Function HiddenEmail ($upn){
+    Set-Mailbox -Identity $upn -HiddenFromAddressListsEnabled $true
+}
+
+Function ForwardEmail($forwardFrom,$forwardTo){
+    Set-Mailbox -Identity $forwardFrom -ForwardingSMTPAddress $forwardTo
+}
+
+Function DeliverAndForwardEmail ($forwardFrom,$forwardTo){
+    Set-Mailbox -Identity $forwardFrom -DeliverToMailboxAndForward $true -ForwardingSMTPAddress $forwardTo
+}
+
+Function ExportArchiveMailbox ($upn,$path){
+    if (!(Get-Mailbox jshah@mbccs.com -Archive -ErrorAction SilentlyContinue)){
+        Write-Host "Mailbox Archive is not enabled."
+    else 
+        try {
+            New-MailboxExportRequest -Name "EOE_$upn" -Mailbox $upn -IsArchive -FilePath $path+"InPlaceHold_"+$filename+"_archive.pst"
+            While (!(Get-MailboxExportRequest -Mailbox $upn -Status Completed)) { Start-Sleep -s 300 }
+        }
+        catch { Write-Host "Please confirm logged in user has Mailbox Import Export role assigned and try again." }
+    }
+}
+
+Function ExportMailbox ($upn,$path){
+    $filename = $upn.split("@")[0]
+    if ($path[-1] -ne "`\") { $path += "`\" }
+    try {
+        New-MailboxExportRequest -Name "EOE_$upn" -Mailbox $upn -FilePath $path+"InPlaceHold_"+$filename+".pst"
+        While (!(Get-MailboxExportRequest -Mailbox $upn -Status Completed)) { Start-Sleep -s 300 }
+        ExportArchiveMailbox ($upn,$path)
+    }
+    catch { Write-Host "Please confirm logged in user has Mailbox Import Export role assigned and try again." }
+        
+}
+
+Function DisableMailbox ($upn){
+    Disable-Mailbox $upn
+}
+
+Function DeleteMailbox ($upn){
+    $DisplayName = (Get-Mailbox $upn).Name
+    Disable-Mailbox $upn
+    $guid = Get-MailboxDatabase | Get-MailboxStatistics | where { $_.DisplayName -match $name -and $_.DisconnectDate -ne $null } | select MailboxGuid
+    Get-MaiboxDatabase | Remove-Mailbox -StoreMailboxIdentity $guid
+}
+
+Function ConvertToSharedMailbox ($upn){
+    Set-Mailbox $upn -Type Shared
+}
+
+Function RemoveLicenses ($upn){
+    $licenseObj = Get-MsolAccountSku
+    $license = $licenseObj.AccountSkuId
+    Set-MsolUserLicese -UserPrincipalName $upn -RemoveLicenses $license
+}
+
+Function RemoveMsolUser ($upn){
+    Remove-MsolUser -UserPrincipalName $upn
+}
+
+Function PurgeDirectory ($path) {
+    takeown /F $path /A /R /D y
+    icacls $path /t /grant administrators:f  
+    Remove-Item $path -Recurse -Force 
+}
+
+Function ArchiveDirectory ($source,$destination){
+    try {
+        Add-Type -AssemblyName "system.io.compression.filesystem"
+        [io.compression.zipfile]::CreateFromDirectory($source,$destination)
+        Write-Host "$source has been compressed and placed in $destination"
+        if (Test-Path $destination){
+            PurgeDirectory($source)
+        }
+    }
+    catch {
+        Write-Host "Unable to compress $source"
+    }
+}
+
+Function MoveDirectory ($source,$destination){
+    try {
+        &robocopy $source $destination /S /E R:1 /W:1 /MOV
+    }
+    catch {
+        Write-Host "Unable to move $source to $destination"
+   }
+
+}
+
+Function DisableUserObject ($upn) {
+    try { get-aduser -filter { UserPrincipalName -like $upn } | Disable-ADAccount }
+    catch { Write-Host "Unable to disable user object" }
+}
+
+Function DeleteUserObject ($upn){
+    DisableUserObject ($upn)
+    try { Get-ADUser -Filter { UserPrincipalName -like $upn } | Remove-ADUser }
+    catch { Write-Host "Unable to delete user object" }
+}
+
+Function RemoveUserObject ($upn) {
+    try{
+        $DGs = Get-DistributionGroup -ErrorAction SilentlyContinue
+        $PGs = get-aduser -filter { UserPrincipalName -like $upn } | Get-ADPrincipalGroupMembership -ErrorAction SilentlyContinue
+
+        if ($DGs) { foreach ($DG in $DGs) { Remove-DistributionGroupMember -Identity $dg -Member $upn -ErrorAction SilentlyContinue -Confirm:$false } }
+        if ($PGs) { Remove-ADPrincipalGroupMembership -Identity $upn.split("@")[0] -MemberOf $PGs -Confirm:$false }
+    }
+    catch{
+        Write-Host "Unable to remove user from any groups"
+    }
+}
 
 
 ###########################
-# Reset Variables
+##### VARIABLES #####
 
 $adminCredential = $null
 $isDomain = $null
@@ -31,11 +339,36 @@ $isDelegateUPN = $null
 $delegateUPN =$null
 $isRestricted = $null
 $isHidden = $null
+$convertSharedAction = $null
+$isLicenseRemoved = $null
 $isPath = $null
+$isMailboxDB = $null
 $isAutoResponse = $null
 $ReponderType = $null
 $isAutoResponseMessage = $null
 $AutoResponseMessage = $null
+$homeDirectory = $null
+$homeDirIntent = $null
+$homeDirIntentResponse = $null
+$isHomeDirDelegate = $null
+$isHomePath = $null
+$homeDirDelegate = $null
+$delegateHomeDir = $null
+$homeDirPath = $null
+$profilePath = $null
+$profileIntent = $null
+$profileIntentResponse = $null
+$profileDirectory = $null
+$isProfileDelegate = $null
+$isProfilePath = $null
+$ProfileDelegate = $null
+$delegateProfileDir = $null
+$destinationHome = $null
+$destinationProfile = $null
+$destHomePath = $null
+$destProfilePath = $null
+$userObjectIntent = $null
+
 
 
 ###########################
@@ -49,11 +382,16 @@ if ($isDomain -match "Y") {
     
     while ($isTargetUser -notmatch "Y") {
         $isTargetUser = $Null
-        Write-Output "`nSelect the target from the list.."; $targetUser = Get-ADUser -Filter * | select Enabled,Name,SamAccountName,UserPrincipalName | Out-GridView -PassThru
+        Write-Output "`nSelect the target from the list.."; $targetUser = Get-ADUser -Filter * -Properties Enabled,Name,SamAccountName,UserPrincipalName,HomeDirectory,ProfilePath | select Enabled,Name,SamAccountName,UserPrincipalName,HomeDirectory,ProfilePath | Out-GridView -PassThru
         if (!$isTargetUser) { Write-Output "Please confirm target user: $($targetUser.Name)"; $isTargetUser = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isTargetUser) { $isTargetUser = Read-Host "Y/N" } }
+        if (!$TargetUser) { Write-Output "Target user was not selected.  Please select a user. "; $isTargetUser = $null }
     }
     $userName = $targetUser.SamAccountName
     $upn = $targetUser.UserPrincipalName
+    if (Test-Path $targetUser.HomeDirectory) { $homeDirectory = $targetUser.HomeDirectory }
+    else { Write-Output "`nUnable to confirm HOME directory.  Continuing.. " }
+    if (Test-Path $targetUser.ProfilePath) { $profileDirectory = $targetUser.ProfilePath }
+    else { Write-Output "`nUnable to confirm PROFILE directory. Continuing.. " }
 }
 elseif ($isCloudOnly -match "Y") {
     if (!$adminCredential) { 
@@ -66,6 +404,7 @@ elseif ($isCloudOnly -match "Y") {
         $isTargetUser = $Null
         Write-Output "`nSelect the target from the list.."; $targetUser = Get-MsolUser | Out-GridView -PassThru
         if (!$isTargetUser) { Write-Output "Please confirm target user: $($targetUser.DisplayName)"; $isTargetUser = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isTargetUser) { $isTargetUser = Read-Host "Y/N" } }
+        if (!$targetUser) { Write-Output "Target user was not selected.  Please select a user. "; $isTargetUser = $null }
     }
     $upn = $targetUser.UserPrincipalName
     $userName = $upn.split("@")[0]
@@ -112,13 +451,6 @@ if ($isEXO -match "Y") {
             Import-PSSession $ExoSession
         }
         catch { Write-Output "! Unable to open Exchange Online session on with provided credentials"; exit; }
-        #try {
-        #    Write-Output "Connecting to Security and Compliance Powershell Service"
-        #    $EopSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://ps.compliance.protection.outlook.com/powershell-liveid/ -Credential $adminCredential -Authentication Basic -AllowRedirection
-        #    Import-PSSession $EopSession -AllowClobber
-        #}
-        #catch { Write-Output "! Unable to open Exchange Compliance session on with provided credentials" }
-
     }
 }
 else {
@@ -138,26 +470,27 @@ else {
     }
 }
 
-if ($isExo -match "Y" -or $isExchange -match "Y") {
+if ($isExo,$isExchange -contains "Y") {
 
     if (!$mailboxIntent) { 
         $intentResponse = ""
         Write-Output " "
-        $intent = "`nDo you want to "
+        $intent = "`nWhat do you want to do with the target users Mailbox: "
         if ($isExchange -match "Y") { 
-            $intent += "`n`t[E]xport to PST and Delete "; $intentResponse += "E/" 
-            $intent += "`n`t[M]ove to another database "; $intentResponse += "M/"
+            $intent += "`n`t[E]xport to PST and Disable Mailbox (mailbox will be removed on retention period expiry) "; $intentResponse += "E/" 
+            #$intent += "`n`t[M]ove to another database "; $intentResponse += "M/"
             $intent += "`n`t[P]ST Export Only "; $intentResponse += "P/"
         }
         else { $intent += "`n`t[C]onvert to Shared Mailbox "; $intentResponse += "C/" } 
-        $intent += "`n`t[D]elete the mailbox, or "; $intentResponse += "D/"
-        $intent += "`n`tMake [n]o changes to the target mailbox?`n"; $intentResponse += "N" 
+        $intent += "`n`t[S]oft delete (disable) the mailbox "; $intentResponse += "S/"
+        $intent += "`n`t[D]elete the mailbox immediately, or "; $intentResponse +="D/" 
+        $intent += "`n`t[N]one of the above are required`n"; $intentResponse += "N" 
 
         Write-Output "`n`n$intent"
         $mailboxIntent = Read-Host -Prompt $intentResponse; while ($intentResponse -notmatch $mailboxIntent) { $mailboxIntent = Read-Host $intentResponse } 
     }
 
-    if (!$isRedirect) { Write-Output "`nDo you want to REDIRECT future emails set to target user to another email?"; $isRedirect = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isRedirect) { $isRedirect = Read-Host "Y/N" } }
+    if (!$isRedirect) { Write-Output "`nDo you want to REDIRECT future emails set to target user to another email? `nNote: This option will create a transport rule which will forward all emails sent to $upn to a different email.  No email messages will be delivered to a mailbox. "; $isRedirect = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isRedirect) { $isRedirect = Read-Host "Y/N" } }
     
     if ($isRedirect -match "Y"){
         While ($isRedirectEmail -notmatch "Y") {
@@ -166,7 +499,7 @@ if ($isExo -match "Y" -or $isExchange -match "Y") {
         }
     }
 
-    if ("E","D" -notcontains $mailboxIntent){
+    if ("E","D","S" -notcontains $mailboxIntent){
         if ($isRedirect -match "N") {
             if (!$isForward) { Write-Output "`nDo you want to FORWARD target user emails to another email?"; $isForward = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isForward) { $isForward = Read-Host "Y/N" } }
             if ($isForward -match "Y"){
@@ -179,7 +512,7 @@ if ($isExo -match "Y" -or $isExchange -match "Y") {
             }
         }
 
-        if (!$isDelegated) { Write-Output "`nDo you want to DELEGATE ACCESS to target users mailbox to another user?"; $isDelegated = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isDelegated) { $isDelegated = Read-Host "Y/N" } }
+        if (!$isDelegated) { Write-Output "`nDo you want to DELEGATE ACCESS to target mailbox to another user?"; $isDelegated = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isDelegated) { $isDelegated = Read-Host "Y/N" } }
         if ($isDelegated -match "Y" -and $isAADSync -match "Y"){
             While ($isDelegateUser -notmatch "Y"){
                 $isDelegateUser = $null
@@ -197,18 +530,35 @@ if ($isExo -match "Y" -or $isExchange -match "Y") {
             }
         }
 
-        if (!$isRestricted) { Write-Output "`nDo you want to RESTRICT DELIVERY of new emails to the target users mailbox?"; $isRestricted = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isRestricted) { $isRestricted = Read-Host "Y/N" } }
+        if (!$isRestricted) { Write-Output "`nDo you want to RESTRICT DELIVERY of new emails to target mailbox?"; $isRestricted = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isRestricted) { $isRestricted = Read-Host "Y/N" } }
         if (!$isHidden) { Write-Output "`nDo you want to hide this user from the GAL?"; $isHidden = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isHidden) { $isHidden = Read-Host "Y/N" } }
     }
-    elseif ("E","P" -contains $mailboxIntent){
+    
+    if ("C" -contains $mailboxIntent) {
+        if ((((Get-Mailbox $upn).ProhibitSendQuota).Split(" ")[0]) -gt "50"){
+            if (!$convertSharedAction) { Write-Output "Mailbox cannot be converted to shared mailbox due to size.  Shared Mailbox size limit is 50GB.  Would you like to export to PST?"; $convertSharedAction = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $convertSharedAction) { $convertSharedAction = Read-Host "Y/N" } }
+        }
+        if (Get-Mailbox $upn -Archive -ErrorAction SilentlyContinue) {
+            if (!$convertSharedAction) {  Write-Output "`nTarget Mailbox has archiving enabled.  Please confirm if you would like to [k]eep the shared mailbox licensed to prevent data loss, or if you would like to [e]xport the archive mailbox to a PST and proceed with conversion and license removal."; $convertSharedAction = Read-Host -Prompt "K/E"; while ("K","E" -notcontains $convertSharedAction) { $convertSharedAction = Read-Host "K/E" } }
+        }
+        if (("K","N" -contains $convertSharedAction) -or ($isODB,$isSPO -contains "Y")) { $isLicenseRemoved = "N" }
+        if (!$isLicenseRemoved) { Write-Output "`nDo you want to remove target user from Office 365/Azure AD and return assigned licenses?"; $isLicenseRemoved = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isLicenseRemoved) { $isLicenseRemoved = Read-Host "Y/N" } }
+    }
+
+    if (("E","P" -contains $mailboxIntent) -or ("E","Y" -contains $convertSharedAction)){
         While ($isPath -notmatch "Y") { 
-            $isPath = $null
-            Write-Output "`nPlease enter the path to export the mailbox to, example \\servername\share\username.pst"; $path = Read-Host -Prompt "Path"
-            if (!$isPath) { Write-Output "Please confirm path: $($path))"; $isPath = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isPath) { $isPath = Read-Host "Y/N" } }
-            if (!(Test-Path $path)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isPath = "N" }
+            Write-Output "`nPlease enter the path to export the mailbox and/or archive mailbox to, example \\servername\share\"; $path = Read-Host -Prompt "Path"
+            if (!$isPath) { Write-Output "Please confirm path: $($path)"; $isPath = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isPath) { $isPath = Read-Host "Y/N" } }
+            if ($isPath -match "Y") { if (!(Test-Path $path)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isPath = $null } }
+            else { $isPath = $null }
         }
     }
-      
+    
+    if ("M" -contains $mailboxIntent){
+        while ($isMailboxDB -notmatch "Y"){
+
+        }
+    }  
 
     
     if (!$isAutoResponse) { Write-Output "`nDo you want to set an AUTOMATED RESPONSE for emails sent to this user?"; $isAutoResponse = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isAutoResponse) { $isAutoResponse = Read-Host "Y/N" } }
@@ -227,16 +577,126 @@ if ($isExo -match "Y" -or $isExchange -match "Y") {
             if (!$isAutoResponseMessage) { Write-Output "Please confirm the auto-response message: `n$($AutoResponseMessage)`n`n"; $isAutoResponseMessage = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isAutoResponseMessage) { $isAutoResponseMessage = Read-Host "Y/N" } }
         }
     }
+}
 
-    
-    
+if ($isDomain -match "Y"){
+    if ($homeDirectory){
+        if (!$homeDirIntent) { 
+            $homeDirIntentResponse = ""
+            Write-Output " "
+            $intent = "`nWhat do you want to do with the target users HOME Directory: "
+            $intent += "`n`t[P]ermanently delete the directory "; $homeDirIntentResponse += "P/"
+            $intent += "`n`t[T]ransfer the directory another user as a subfolder "; $homeDirIntentResponse +="T/" 
+            $intent += "`n`t[M]ove the directory to a location on a shared network drive, or "; $homeDirIntentResponse +="M/" 
+            $intent += "`n`t[Z]ip the directory for archiving`n"; $homeDirIntentResponse += "Z" 
+
+            Write-Output "`n`n$intent"
+            $homeDirIntent = Read-Host -Prompt $homeDirIntentResponse; while ($homeDirIntentResponse -notmatch $homeDirIntent) { $homeDirIntent = Read-Host $homeDirIntentResponse } 
+        } 
+
+        switch ($homeDirIntent){
+            "T"{
+                While ($isHomeDirDelegate -notmatch "Y"){
+                    Write-Output "`nSelect the delegate user from the list.."; $homeDirDelegate = Get-ADUser -Filter * -Properties Enabled,Name,SamAccountName,UserPrincipalName,HomeDirectory,ProfilePath | select Enabled,Name,SamAccountName,UserPrincipalName,HomeDirectory,ProfilePath | Out-GridView -PassThru
+                    if (!$isHomeDirDelegate) { Write-Output "`nPlease confirm delegated access user: $($homeDirDelegate.Name)"; $isHomeDirDelegate = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isHomeDirDelegate) { $isHomeDirDelegate = Read-Host "Y/N" } }
+                    if (!$homeDirDelegate.HomeDirectory) { Write-Output "This user does not have a home directory defined.  Please select another user."; $isHomeDirDelegate = $null }
+                    else { 
+                        if (Test-Path $homeDirDelegate.HomeDirectory){
+                            $destHomePath = Join-Path -Path $homeDirDelegate.HomeDirectory -ChildPath $homeDirectory.split("\")[-1]
+                            try { New-Item -ItemType Directory -Path $destHomePath }
+                            catch { Write-Output "`nActive user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isHomeDirDelegate = $null }
+                        }
+                        else { Write-Output "`nUnable to find destination folder, please confirm it exists and permissions allow active user to write data before trying again. "; $isHomeDirDelegate = $null }
+                    }
+                    if ($isHomeDirDelegate -match "N") { $isHomeDirDelegate = $null }
+                }
+                $delegateHomeDir = $homeDirDelegate.HomeDirectory
+            }
+            "M"{
+                While ($isHomePath -notmatch "Y") { 
+                    Write-Output "`nPlease enter the destination path to move the home directory to, example \\servername\share\eoeusers\"; $homeDirPath = Read-Host -Prompt "Path"
+                    if (!$isHomePath) { Write-Output "Please confirm path: $($homePath)"; $isHomePath = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isHomePath) { $isHomePath = Read-Host "Y/N" } }
+                    if ($isHomePath -match "Y") { 
+                        if (!(Test-Path $homePath)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isHomePath = $null } 
+                        else { 
+                            $DestPath = Join-Path -Path $homePath -ChildPath $homeDirectory.split("\")[-1]
+                            try { New-Item -ItemType Directory -Path $destPath }
+                            catch { Write-Output "Active user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isHomePath = $null }
+                        }
+                    }
+                    else { $isHomePath = $null }
+                }
+            }
+            "Z" {
+                $destinationHome = $homeDirectory.Substring(0, $homeDirectory.LastIndexOf('\'))+"`\$username.zip"
+            }
+        }
+    }
+    if ($profileDirectory){
+        if (!$profileIntent) { 
+            $profileIntentResponse = ""
+            Write-Output " "
+            $intent = "`nWhat do you want to do with the target users Roaming Profile: "
+            $intent += "`n`t[P]ermanently delete the directory "; $profileIntentResponse += "P/"
+            $intent += "`n`t[T]ransfer the directory another user as a subfolder of their Home Directory "; $profileIntentResponse +="T/" 
+            $intent += "`n`t[M]ove the directory to a location on a shared network drive, or "; $profileIntentResponse +="D/" 
+            $intent += "`n`t[Z]ip the directory for archiving`n"; $profileIntentResponse += "Z" 
+
+            Write-Output "`n`n$intent"
+            $profileIntent = Read-Host -Prompt $profileIntentResponse; while ($profileIntentResponse -notmatch $profileIntent) { $profileIntent = Read-Host $profileIntentResponse } 
+        } 
+        switch ($profileIntent){
+            "T"{
+                While ($isProfileDelegate -notmatch "Y"){
+                    Write-Output "Select the delegate user from the list.."; $ProfileDelegate = Get-ADUser -Filter * -Properties Enabled,Name,SamAccountName,UserPrincipalName,HomeDirectory,ProfilePath | select Enabled,Name,SamAccountName,UserPrincipalName,HomeDirectory,ProfilePath | Out-GridView -PassThru
+                    if (!$isProfileDelegate) { Write-Output "Please confirm delegated access user: $($ProfileDelegate.Name)"; $isProfileDelegate = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isProfileDelegate) { $isProfileDelegate = Read-Host "Y/N" } }
+                    if (!$ProfileDelegate.HomeDirectory) { Write-Output "This user does not have a home directory defined.  Please select another user."; $isProfileDelegate = $null }
+                    else { 
+                        if (Test-Path $profileDirDelegate.HomeDirectory){
+                            $destProfilePath = Join-Path -Path $profileDirDelegate.HomeDirectory -ChildPath $profileDirectory.split("\")[-1]
+                            try { New-Item -ItemType Directory -Path $destProfilePath }
+                            catch { Write-Output "`nActive user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isProfileDelegate = $null }
+                        }
+                        else { Write-Output "`nUnable to find destination folder, please confirm it exists and permissions allow active user to write data before trying again. "; $isProfileDelegate = $null }
+                    }
+                    if ($isProfileDelegate -match "N") { $isProfileDelegate = $null }
+                }
+                $delegateProfileDir = $ProfileDelegate.HomeDirectory
+            }
+            "M"{
+                While ($isProfilePath -notmatch "Y") { 
+                    Write-Output "`nPlease enter the destination path to move the home directory to, example \\servername\share\eoeusers\"; $profilePath = Read-Host -Prompt "Path"
+                    if (!$isProfilePath) { Write-Output "Please confirm path: $($profilePath)"; $isProfilePath = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isHomePath) { $isProfilePath = Read-Host "Y/N" } }
+                    if ($isProfilePath -match "Y") { if (!(Test-Path $profilePath)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isProfilePath = $null } }
+                    else { $isProfilePath = $null }
+                }
+            }
+            "Z" {
+                $destinationProfile = $profileDirectory.Substring(0, $profileDirectory.LastIndexOf('\'))+"`\$username.zip"
+            }
+        }
+    }
+    if (!$userObjectIntent) {
+        Write-Output ""
+        $intent = "`nWhat do you want to do with the User Object: "
+        $intent += "`n`t[P]ermanently delete the user object"; $userObjectIntentResponse += "P/"
+        $intent += "`n`t[D]isable the user object"; $userObjectIntentResponse += "D/"
+        $intent += "`n`t[R]emove the user object from all security and distrubtion groups, and nothing else"; $userObjectIntentResponse += "R/"
+        $intent += "`n`t[N]o changes to the user object"; $userObjectIntentResponse += "N/"
+        Write-Output "`n`n$intent"
+        $userObjectIntent = Read-Host -Prompt $userObjectIntentResponse; while ($userObjectIntentResponse -notmatch $userObjectIntent) { $userObjectIntent = Read-Host $profileIntentResponse }
+    }
+    switch ($userObjectIntent){
+        #"P"{}
+        #"D"{}
+        "R"{}
+        #"N"{}
+    }
 }
 
 
 
 ########### DO STUFF ##########
-
-
 
 if ($isDomain -match "Y") { 
     Write-Output "`nResetting Active Directory Password..."
@@ -244,22 +704,21 @@ if ($isDomain -match "Y") {
     
 }
 
-if ($isOffice365 -match "Y" -and $isAADSync -match "Y") { 
-    Write-Output "`nPerforming Azure AD Sync"
-    #Sync-Password ($AADConnectServer) 
-}
-
-if ($isOffice365 -match "Y" -and $isAADSync -match "N") { 
-    Write-Output "`nResetting Azure AD Password..."
-    #Reset-AAD-Password ($upn) 
-}
-
 if ($isOffice365 -match "Y") { 
+    if ($isAADSync -match "Y") {
+        Write-Output "`nPerforming Azure AD Sync"
+        #Sync-Password ($AADConnectServer) 
+    }
+    else {
+        Write-Output "`nResetting Azure AD Password..."
+        #Reset-AAD-Password ($upn) 
+    }
+
     Write-Output "`nBlocking User Access to Office 365..."
     #BlockUser($upn) 
     Write-Output "Completed"
 }
-if ($isExchange -match "Y" -or $isEXO -match "Y"){
+if ($isExchange,$isExo -contains "Y"){
     Write-Output "`nDisabling user connections (OWA, ActiveSync, MAPI, IMAP & POP)..."
     #DiableUserConnections($upn)
     Write-Output "Completed"
@@ -296,10 +755,15 @@ if ($isExchange -match "Y" -or $isEXO -match "Y"){
         Write-Output "Completed"
     }
 
-    if ($isAutoResponse -match "Y"){
-        Write-Output "`nCreating auto-responder"
-        #if ($ResponderType -match "T"){ Set-AutoResponse-Transport ($upn,$AutoResponseMessage) }
-        #else { Set-AutoResponse-Mailbox ($upn, $AutoResponseMessage) }
+    if ($AutoResponseMessage){
+        if ($ResponderType -match "T"){ 
+            Write-Output "`nCreating Transport Rule to auto-respond to emails sent to $upn"
+            #Set-AutoResponse-Transport ($upn,$AutoResponseMessage)
+        }
+        else { 
+            Write-Output "`nCreating Inbox Automated Reply for mailbox of $upn"
+            #Set-AutoResponse-Mailbox ($upn, $AutoResponseMessage)
+        }
         Write-Output "Completed"
     }
 
@@ -309,59 +773,110 @@ if ($isExchange -match "Y" -or $isEXO -match "Y"){
         Write-Output "Completed"
     }
 
-    if ($mailboxIntent -match "E") {
-        Write-Output "`nExporting Mailbox to $path"
+    if ($path) {
+        Write-Output "`nExporting Mailbox to $path.  Please wait until export has been completed..."
         #ExportEmail ($upn,$path)
-        Write-Output "Export request has been submitted."
-        #while (!(Test-Path $path)){ 
-            #delete
-        #}
-            
+        Write-Output "Completed"
     }
 
-    if ($mailboxIntent -match "D") {
-        #delete
+    if ("E","S" -contains $mailboxIntent) {
+        Write-Output "`nDisabling mailbox for $upn"
+        #DisableMailbox ($upn)
+        Write-Output "Completed"
     }
 
-    if ($mailboxIntent -match "C") {
+    if ("D" -contains $mailboxIntent) {
+        Write-Output "`nDisabling and Removing mailbox for $upn" 
+        #DeleteMailbox ($upn)
+        Write-Output "Completed"
+    }
+
+    if ("C" -contains $mailboxIntent) {
         # Convert to Shared Mailbox
-        if ($isSPO, $isODB -notcontains "Y") {
-            # Remove License
-            # Remove User
-        }
-
+        Write-Output "`nConverting target user mailbox to shared mailbox"
+        #ConvertToSharedMailbox ($upn)
+        Write-Output "Completed"
     }
 }
 
-if ($isExchange -match "Y") { 
-
-
-}
-if ($isEXO -match "Y") { 
-
-
-}
 if ($isSPO -match "Y") { Write-Output "SharePoint Offboarding Processes are not supported at this time.  Please perform these tasks manually. " }
 if ($isODB -match "Y") { Write-Output "OneDrive for Business Offboarding Processes are not supported at this time.  Please perform these tasks manually. " }
 
+if ($isLicenseRemoved -match "Y"){ 
+    Write-Output "`nRemoving Office 365 Licenses from $upn"
+    #RemoveLicenses ($upn)
+    Write-Output "Completed"
+    if ($isAADSync -notmatch "Y"){
+        Write-Output "`nRemoving User from Azure AD/Office 365"
+        #RemoveMsolUser ($upn)
+        Write-Output "Completed"
+    }
+}
+
 if ($ExSession -match "Open") { Remove-PSSession $ExSession }
-#if ($ExoSession -match "Open") { Remove-PSSession $ExoSession }
+if ($ExoSession -match "Open") { Remove-PSSession $ExoSession }
 if ($EopSession -match "Open") { Remove-PSSession $EopSession }
+
+switch ($homeDirIntent) {
+    "P" {
+        Write-Output "`nPermanently deleting $homeDirectory"
+        #PurgeDirectory ($homeDirectory)
+        Write-Output "Completed"
+    }
+    "T" {
+        Write-Output "`nMoving user HOME directory to $destHomePath"
+        #MoveDirectory ($homeDirectory,$destHomePath)
+    }
+    "M" {
+        Write-Output "`nMoving user HOME directory to $destHomePath"
+        #MoveDirectory ($homeDirectory,$destHomePath)
+    }
+    "Z" {
+        Write-Output "`nArchiving $homeDirectory"
+        #ArchiveDirectory ($homeDirectory, $destinationHome)
+        
+    }
+}
+
+switch ($profileIntent) {
+    "P" {
+        Write-Output "`nPermanently deleting $profileDirectory"
+        #PurgeDirectory ($profileDirectory)
+        Write-Output "Completed"
+    }
+    "T" {
+        Write-Output "`nMoving user HOME directory to $destHomePath"
+        #MoveDirectory ($homeDirectory,$destHomePath)
+    }
+    "M" {
+        Write-Output "`nMoving user HOME directory to $destHomePath"
+        #MoveDirectory ($homeDirectory,$destHomePath)
+    }
+    "Z" {
+        Write-Output "`nArchiving $profileDirectory"
+        #ArchiveDirectory ($profileDirectory, $destinationProfile)
+    }
+}
+
+switch ($userObjectIntent){
+    "P"{
+        Write-Output "`nPermantently deleting user object"
+        #DeleteUserObject ($upn)   
+    }
+    "D"{
+        Write-Output "`nDisabling user object"
+        #DisableUserObject ($upn) 
+    }
+    "R"{
+        Write-Output "`nRemoving user from all security and distribution groups"
+        #RemoveUserObject ($upn)
+    }
+}
 
 ### TO DO ####
 
 # 1. Add support for ODB/SPO/SFB
 # 2. If target user is a Manager, update all users with Manager = TargetUser to New Manager
-# 3. Export Mailbox to PST 
-# 4. Delete Mailbox
-# 5. Remove License
-# 6. Disable or Delete User
-# 7. Delegation of Home directory
 
-# Move Target Users Home Share from \\SERVER\Users to \\SERVER\Users\EOE
-# Remove all non-system/administor permissions
-# Create Security Group 'EOE User - Name - Personal Folder Access'
-# Add Security Group with Full Access permissions to Target User's Personal Folder
-# Add delegated users to Security Group
 
   
