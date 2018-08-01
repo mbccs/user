@@ -625,9 +625,12 @@ if ($isDomain -match "Y"){
                     if ($isHomePath -match "Y") { 
                         if (!(Test-Path $homeDirPath)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isHomePath = $null } 
                         else { 
-                            $DestPath = Join-Path -Path $homeDirPath -ChildPath $homeDirectory.split("\")[-1]
-                            try { New-Item -ItemType Directory -Path $destPath }
-                            catch { Write-Output "Active user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isHomePath = $null }
+                            $destHomePath = Join-Path -Path $homeDirPath -ChildPath $homeDirectory.split("\")[-1]
+                            if (Test-Path $destHomePath) { Write-Output "The destination path $destHomePath already exists. Please choose a different path to prevent overwrite."; $isHomePath = $null }
+                            else {
+                                try { New-Item -ItemType Directory -Path $destPath }
+                                catch { Write-Output "Active user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isHomePath = $null }
+                            }
                         }
                     }
                     else { $isHomePath = $null }
@@ -671,11 +674,22 @@ if ($isDomain -match "Y"){
             }
             "M"{
                 While ($isProfilePath -notmatch "Y") { 
-                    Write-Output "`nPlease enter the destination path to move the home directory to, example \\servername\share\eoeusers\"; $profilePath = Read-Host -Prompt "Path"
-                    if (!$isProfilePath) { Write-Output "Please confirm path: $($profilePath)"; $isProfilePath = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isHomePath) { $isProfilePath = Read-Host "Y/N" } }
-                    if ($isProfilePath -match "Y") { if (!(Test-Path $profilePath)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isProfilePath = $null } }
+                    Write-Output "`nPlease enter the destination path to move the PROFILE directory to, example \\servername\share\eoeprofiles\"; $profileDirPath = Read-Host -Prompt "Path"
+                    if (!$isProfilePath) { Write-Output "Please confirm path: $($profileDirPath)"; $isProfilePath = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isProfilePath) { $isProfilePath = Read-Host "Y/N" } }
+                    if ($isProfilePath -match "Y") { 
+                        if (!(Test-Path $profileDirPath)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isProfilePath = $null } 
+                        else { 
+                            $destProfilePath = Join-Path -Path $profileDirPath -ChildPath $profileDirectory.split("\")[-1]
+                            if (Test-Path $destProfilePath) { Write-Output "The destination path $destProfilePath already exists. Please choose a different path to prevent overwrite."; $isProfilePath = $null }
+                            else {
+                                try { New-Item -ItemType Directory -Path $destProfilePath }
+                                catch { Write-Output "Active user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isProfilePath = $null }
+                            }
+                        }
+                    }
                     else { $isProfilePath = $null }
                 }
+
             }
             "Z" {
                 $destinationProfile = $profileDirectory.Substring(0, $profileDirectory.LastIndexOf('\'))+"`\$username.zip"
