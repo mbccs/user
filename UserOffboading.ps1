@@ -420,7 +420,7 @@ else {
     Write-Output "`nOffboarding Users who are not on Active Directory OR Azure Active Diretory is not supported."; exit
 }
 
-$transcriptpath = ".\User_Offboarding_" + $userName + "_" +(Get-Date).ToString('yyyy-MM-dd') + ".txt"
+$transcriptpath = "C:\Temp\User_Offboarding_" + $userName + "_" +(Get-Date).ToString('yyyy-MM-dd') + ".txt"
 Start-Transcript -Path $transcriptpath
 
 if (!$isOffice365) { Write-Output "`nDoes this user use Office 365?"; $isOffice365 = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isOffice365) { $isOffice365 = Read-Host "Y/N" } }
