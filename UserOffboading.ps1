@@ -387,13 +387,13 @@ if ($isDomain -match "Y") {
     }
     $userName = $targetUser.SamAccountName
     $upn = $targetUser.UserPrincipalName
-    if ($targetUser.HomeDirectory){
-        if (Test-Path $targetUser.HomeDirectory){ $homeDirectory = $targetUser.HomeDirectory }
-        else { Write-Output "`nUnable to confirm HOME directory.  Continuing.. " }
+    $homeDirectory = $targetUser.HomeDirectory
+    if ($homeDirectory){
+        if (!(Test-Path $homeDirectory)){ Write-Output "`nUnable to confirm HOME directory.  Continuing.. "; $homeDirectory = $null }
     }
-    if ($targetUser.ProfilePath) {
-        if (Test-Path $targetUser.ProfilePath) { $profileDirectory = $targetUser.ProfilePath }
-        else { Write-Output "`nUnable to confirm PROFILE directory. Continuing.. " }
+    $profileDirectory = $targetUser.ProfilePath
+    if ($profileDirectory) {
+        if (!(Test-Path $profiledirectory)) { Write-Output "`nUnable to confirm PROFILE directory. Continuing.. "; $profileDirectory = $null }
     }
 }
 elseif ($isCloudOnly -match "Y") {
@@ -497,6 +497,7 @@ if ($isExo,$isExchange -contains "Y") {
     
     if ($isRedirect -match "Y"){
         While ($isRedirectEmail -notmatch "Y") {
+            $isRedirectEmail = $null
             Write-Output "Please enter the Email for where emails intended for target user should be delivered"; $redirectEmail = Read-Host -Prompt 'Email'
             if (!$isRedirectEmail) { Write-Output "Please confirm redirect recipient email: $($redirectEmail)"; $isRedirectEmail = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isRedirectEmail) { $isRedirectEmail = Read-Host "Y/N" } }
         }
@@ -567,7 +568,7 @@ if ($isExo,$isExchange -contains "Y") {
     if (!$isAutoResponse) { Write-Output "`nDo you want to set an AUTOMATED RESPONSE for emails sent to this user?"; $isAutoResponse = Read-Host -Prompt "Y/N"; while ("Y", "N" -notcontains $isAutoResponse) { $isAutoResponse = Read-Host "Y/N" } }
     
     if ($isAutoResponse -match "Y"){ 
-        if ("E","D" -notcontains $mailboxIntent) {
+        if ("D","E","S" -notcontains $mailboxIntent) {
             if (!$ReponderType) { Write-Output "Do you want to deliver auto-response via NDR using [T]ransport Rule or from the target users [M]ailbox using out-of-office reply?"; $ResponderType = Read-Host "T/M"; while ("T","M" -notcontains $ResponderType) { $ResponderType = Read-Host "T/M" } }
         }
         else {
