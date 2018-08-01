@@ -310,66 +310,66 @@ Function RemoveUserObject ($upn) {
 
 
 ###########################
-##### VARIABLES #####
+##### PARAMTERS #####
 
-$adminCredential = $null
-$isDomain = $null
-$isCloudOnly = $null
-$isTargetUser = $null
-$isUPN = $null
-$isOffice365 = $null
-$isAADSync = $null
-$isAADConnectServer = $null
-$isEXO = $null
-$isExchange = $null
-$isSPO = $null
-$isODB = $null
-$mailboxIntent = $null
-$intentResponse = $null
-$isRedirect = $null
-$redirectEmail = $null
-$isForward = $null
-$isForwardEmail = $null
-$ForwardEmail = $null
-$isLeaveCopy = $null
-$isDelegated = $null
-$isDelegateUser = $null
-$delegateUser = $null
-$isDelegateUPN = $null
-$delegateUPN =$null
-$isRestricted = $null
-$isHidden = $null
-$convertSharedAction = $null
-$isLicenseRemoved = $null
-$isPath = $null
-$isMailboxDB = $null
-$isAutoResponse = $null
-$ReponderType = $null
-$isAutoResponseMessage = $null
-$AutoResponseMessage = $null
-$homeDirectory = $null
-$homeDirIntent = $null
-$homeDirIntentResponse = $null
-$isHomeDirDelegate = $null
-$isHomePath = $null
-$homeDirDelegate = $null
-$delegateHomeDir = $null
-$homeDirPath = $null
-$profilePath = $null
-$profileIntent = $null
-$profileIntentResponse = $null
-$profileDirectory = $null
-$isProfileDelegate = $null
-$isProfilePath = $null
-$ProfileDelegate = $null
-$delegateProfileDir = $null
-$destinationHome = $null
-$destinationProfile = $null
-$destHomePath = $null
-$destProfilePath = $null
-$userObjectIntent = $null
-
-
+param (
+    [string]$adminCredential = $null,
+    [string]$isDomain = $null,
+    [string]$isCloudOnly = $null,
+    [string]$isTargetUser = $null,
+    [string]$isUPN = $null,
+    [string]$isOffice365 = $null,
+    [string]$isAADSync = $null,
+    [string]$isAADConnectServer = $null,
+    [string]$isEXO = $null,
+    [string]$isExchange = $null,
+    [string]$isSPO = $null,
+    [string]$isODB = $null,
+    [string]$mailboxIntent = $null,
+    [string]$intentResponse = $null,
+    [string]$isRedirect = $null,
+    [string]$redirectEmail = $null,
+    [string]$isForward = $null,
+    [string]$isForwardEmail = $null,
+    [string]$ForwardEmail = $null,
+    [string]$isLeaveCopy = $null,
+    [string]$isDelegated = $null,
+    [string]$isDelegateUser = $null,
+    [string]$delegateUser = $null,
+    [string]$isDelegateUPN = $null,
+    [string]$delegateUPN = $null,
+    [string]$isRestricted = $null,
+    [string]$isHidden = $null,
+    [string]$convertSharedAction = $null,
+    [string]$isLicenseRemoved = $null,
+    [string]$isPath = $null,
+    [string]$isMailboxDB = $null,
+    [string]$isAutoResponse = $null,
+    [string]$ReponderType = $null,
+    [string]$isAutoResponseMessage = $null,
+    [string]$AutoResponseMessage = $null,
+    [string]$homeDirectory = $null,
+    [string]$homeDirIntent = $null,
+    [string]$homeDirIntentResponse = $null,
+    [string]$isHomeDirDelegate = $null,
+    [string]$isHomePath = $null,
+    [string]$homeDirDelegate = $null,
+    [string]$delegateHomeDir = $null,
+    [string]$homeDirPath = $null,
+    [string]$profilePath = $null,
+    [string]$profileIntent = $null,
+    [string]$profileIntentResponse = $null,
+    [string]$profileDirectory = $null,
+    [string]$isProfileDelegate = $null,
+    [string]$isProfilePath = $null,
+    [string]$ProfileDelegate = $null,
+    [string]$delegateProfileDir = $null,
+    [string]$destinationHome = $null,
+    [string]$destinationProfile = $null,
+    [string]$destHomePath = $null,
+    [string]$destProfilePath = $null,
+    [string]$userObjectIntent = $null
+)
 
 ###########################
 
