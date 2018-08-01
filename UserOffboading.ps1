@@ -33,11 +33,13 @@ param(
     [string]$isAADConnectServer = $null,
     [string]$isEXO = $null,
     [string]$isExchange = $null,
+    [string]$ExchangeServer = $null,
     [string]$isSPO = $null,
     [string]$isODB = $null,
     [string]$mailboxIntent = $null,
     [string]$intentResponse = $null,
     [string]$isRedirect = $null,
+    [string]$isRedirectEmail = $null,
     [string]$redirectEmail = $null,
     [string]$isForward = $null,
     [string]$isForwardEmail = $null,
@@ -585,7 +587,7 @@ if ($isExo,$isExchange -contains "Y") {
 
 if ($isDomain -match "Y"){
     if ($homeDirectory){
-        if (!$homeDirIntent) { 
+        if (!$homeDirIntent) {
             $homeDirIntentResponse = ""
             Write-Output " "
             $intent = "`nWhat do you want to do with the target users HOME Directory: "
@@ -619,11 +621,11 @@ if ($isDomain -match "Y"){
             "M"{
                 While ($isHomePath -notmatch "Y") { 
                     Write-Output "`nPlease enter the destination path to move the home directory to, example \\servername\share\eoeusers\"; $homeDirPath = Read-Host -Prompt "Path"
-                    if (!$isHomePath) { Write-Output "Please confirm path: $($homePath)"; $isHomePath = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isHomePath) { $isHomePath = Read-Host "Y/N" } }
+                    if (!$isHomePath) { Write-Output "Please confirm path: $($homeDirPath)"; $isHomePath = Read-Host -Prompt "Y/N"; while ("Y","N" -notcontains $isHomePath) { $isHomePath = Read-Host "Y/N" } }
                     if ($isHomePath -match "Y") { 
-                        if (!(Test-Path $homePath)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isHomePath = $null } 
+                        if (!(Test-Path $homeDirPath)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isHomePath = $null } 
                         else { 
-                            $DestPath = Join-Path -Path $homePath -ChildPath $homeDirectory.split("\")[-1]
+                            $DestPath = Join-Path -Path $homeDirPath -ChildPath $homeDirectory.split("\")[-1]
                             try { New-Item -ItemType Directory -Path $destPath }
                             catch { Write-Output "Active user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isHomePath = $null }
                         }
@@ -637,7 +639,7 @@ if ($isDomain -match "Y"){
         }
     }
     if ($profileDirectory){
-        if (!$profileIntent) { 
+        if (!$profileIntent) {
             $profileIntentResponse = ""
             Write-Output " "
             $intent = "`nWhat do you want to do with the target users Roaming Profile: "
@@ -681,6 +683,7 @@ if ($isDomain -match "Y"){
         }
     }
     if (!$userObjectIntent) {
+        $userObjectIntentResponse = ""
         Write-Output ""
         $intent = "`nWhat do you want to do with the User Object: "
         $intent += "`n`t[P]ermanently delete the user object"; $userObjectIntentResponse += "P/"
