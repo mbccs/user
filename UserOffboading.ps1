@@ -25,7 +25,7 @@
 ###########################
 ##### PARAMTERS #####
 
-Param(
+#Param(
     [string]$adminCredential = $null,
     [string]$isDomain = $null,
     [string]$isCloudOnly = $null,
@@ -82,7 +82,7 @@ Param(
     [string]$destHomePath = $null,
     [string]$destProfilePath = $null,
     [string]$userObjectIntent = $null
-)
+#)
 
 #####################
 ##### FUNCTIONS #####
