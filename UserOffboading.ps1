@@ -387,9 +387,9 @@ if ($isDomain -match "Y") {
     }
     $userName = $targetUser.SamAccountName
     $upn = $targetUser.UserPrincipalName
-    if (Test-Path $targetUser.HomeDirectory) { $homeDirectory = $targetUser.HomeDirectory }
+    if (Test-Path $targetUser.HomeDirectory -ErrorAction SilentlyContinue) { $homeDirectory = $targetUser.HomeDirectory }
     else { Write-Output "`nUnable to confirm HOME directory.  Continuing.. " }
-    if (Test-Path $targetUser.ProfilePath) { $profileDirectory = $targetUser.ProfilePath }
+    if (Test-Path $targetUser.ProfilePath -ErrorAction SilentlyContinue) { $profileDirectory = $targetUser.ProfilePath }
     else { Write-Output "`nUnable to confirm PROFILE directory. Continuing.. " }
 }
 elseif ($isCloudOnly -match "Y") {
