@@ -25,7 +25,7 @@
 ###########################
 ##### PARAMTERS #####
 
-param (
+Param(
     [string]$adminCredential = $null,
     [string]$isDomain = $null,
     [string]$isCloudOnly = $null,
