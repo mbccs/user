@@ -609,9 +609,9 @@ if ($isDomain -match "Y"){
                     if (!$homeDirDelegate.HomeDirectory) { Write-Output "This user does not have a home directory defined.  Please select another user."; $isHomeDirDelegate = $null }
                     else { 
                         if (Test-Path $homeDirDelegate.HomeDirectory){
-                            $destHomePath = Join-Path -Path $homeDirDelegate.HomeDirectory -ChildPath $username
-                            try { New-Item -ItemType Directory -Path $destHomePath }
-                            catch { Write-Output "`nActive user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isHomeDirDelegate = $null }
+                            $destHomePath = Join-Path -Path $homeDirDelegate.HomeDirectory -ChildPath "$($username)_personal"
+                            try { New-Item -ItemType Directory -Path $homeDirDelegate.HomeDirectory -Name "$($username)_personal" }
+                            catch { Write-Output "`nUnable to create destination path. "; $isHomeDirDelegate = $null }
                         }
                         else { Write-Output "`nUnable to find destination folder, please confirm it exists and permissions allow active user to write data before trying again. "; $isHomeDirDelegate = $null }
                     }
@@ -626,11 +626,11 @@ if ($isDomain -match "Y"){
                     if ($isHomePath -match "Y") { 
                         if (!(Test-Path $homeDirPath)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isHomePath = $null } 
                         else { 
-                            $destHomePath = Join-Path -Path $homeDirPath -ChildPath $username
+                            $destHomePath = Join-Path -Path $homeDirPath -ChildPath "$($username)_personal"
                             if (Test-Path $destHomePath) { Write-Output "The destination path $destHomePath already exists. Please choose a different path to prevent overwrite."; $isHomePath = $null }
                             else {
-                                try { New-Item -ItemType Directory -Path $destPath }
-                                catch { Write-Output "Unable to confim destination path. "; $isHomePath = $null }
+                                try { New-Item -ItemType Directory -Path $homeDirPath -Name "$($username)_personal" }
+                                catch { Write-Output "Unable to create destination path "; $isHomePath = $null }
                             }
                         }
                     }
@@ -663,9 +663,9 @@ if ($isDomain -match "Y"){
                     if (!$ProfileDelegate.HomeDirectory) { Write-Output "This user does not have a home directory defined.  Please select another user."; $isProfileDelegate = $null }
                     else { 
                         if (Test-Path $profileDirDelegate.HomeDirectory){
-                            $destProfilePath = Join-Path -Path $profileDirDelegate.HomeDirectory -ChildPath $username
-                            try { New-Item -ItemType Directory -Path $destProfilePath }
-                            catch { Write-Output "`nActive user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isProfileDelegate = $null }
+                            $destProfilePath = Join-Path -Path $profileDirDelegate.HomeDirectory -ChildPath "$($username)_profile"
+                            try { New-Item -ItemType Directory -Path $profileDirDelegate.HomeDirectory -Name "$($username)_profile" }
+                            catch { Write-Output "`nUnable to create destination path "; $isProfileDelegate = $null }
                         }
                         else { Write-Output "`nUnable to find destination folder, please confirm it exists and permissions allow active user to write data before trying again. "; $isProfileDelegate = $null }
                     }
@@ -680,11 +680,11 @@ if ($isDomain -match "Y"){
                     if ($isProfilePath -match "Y") { 
                         if (!(Test-Path $profileDirPath)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isProfilePath = $null } 
                         else { 
-                            $destProfilePath = Join-Path -Path $profileDirPath -ChildPath $username
+                            $destProfilePath = Join-Path -Path $profileDirPath -ChildPath "$($username)_profile"
                             if (Test-Path $destProfilePath) { Write-Output "The destination path $destProfilePath already exists. Please choose a different path to prevent overwrite."; $isProfilePath = $null }
                             else {
-                                try { New-Item -ItemType Directory -Path $destProfilePath }
-                                catch { Write-Output "Active user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isProfilePath = $null }
+                                try { New-Item -ItemType Directory -Path $profileDirPath -Name "$($username)_profile" }
+                                catch { Write-Output "`nUnable to create destination path "; $isProfilePath = $null }
                             }
                         }
                     }
