@@ -422,6 +422,7 @@ else {
     Write-Output "`nOffboarding Users who are not on Active Directory OR Azure Active Diretory is not supported."; exit
 }
 
+Write-Output ""
 $transcriptpath = "C:\Temp\User_Offboarding_" + $userName + "_" +(Get-Date).ToString('yyyy-MM-dd') + ".txt"
 Start-Transcript -Path $transcriptpath
 
@@ -608,7 +609,7 @@ if ($isDomain -match "Y"){
                     if (!$homeDirDelegate.HomeDirectory) { Write-Output "This user does not have a home directory defined.  Please select another user."; $isHomeDirDelegate = $null }
                     else { 
                         if (Test-Path $homeDirDelegate.HomeDirectory){
-                            $destHomePath = Join-Path -Path $homeDirDelegate.HomeDirectory -ChildPath $homeDirectory.split("\")[-1]
+                            $destHomePath = Join-Path -Path $homeDirDelegate.HomeDirectory -ChildPath $username
                             try { New-Item -ItemType Directory -Path $destHomePath }
                             catch { Write-Output "`nActive user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isHomeDirDelegate = $null }
                         }
@@ -625,11 +626,11 @@ if ($isDomain -match "Y"){
                     if ($isHomePath -match "Y") { 
                         if (!(Test-Path $homeDirPath)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isHomePath = $null } 
                         else { 
-                            $destHomePath = Join-Path -Path $homeDirPath -ChildPath $homeDirectory.split("\")[-1]
+                            $destHomePath = Join-Path -Path $homeDirPath -ChildPath $username
                             if (Test-Path $destHomePath) { Write-Output "The destination path $destHomePath already exists. Please choose a different path to prevent overwrite."; $isHomePath = $null }
                             else {
                                 try { New-Item -ItemType Directory -Path $destPath }
-                                catch { Write-Output "Active user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isHomePath = $null }
+                                catch { Write-Output "Unable to confim destination path. "; $isHomePath = $null }
                             }
                         }
                     }
@@ -662,7 +663,7 @@ if ($isDomain -match "Y"){
                     if (!$ProfileDelegate.HomeDirectory) { Write-Output "This user does not have a home directory defined.  Please select another user."; $isProfileDelegate = $null }
                     else { 
                         if (Test-Path $profileDirDelegate.HomeDirectory){
-                            $destProfilePath = Join-Path -Path $profileDirDelegate.HomeDirectory -ChildPath $profileDirectory.split("\")[-1]
+                            $destProfilePath = Join-Path -Path $profileDirDelegate.HomeDirectory -ChildPath $username
                             try { New-Item -ItemType Directory -Path $destProfilePath }
                             catch { Write-Output "`nActive user does not have permissions to write to destination folder, please properly permission folder before trying again. "; $isProfileDelegate = $null }
                         }
@@ -679,7 +680,7 @@ if ($isDomain -match "Y"){
                     if ($isProfilePath -match "Y") { 
                         if (!(Test-Path $profileDirPath)) { Write-Output "Unable to verify path.  Please create appropriate folder/share structure or provide a new path."; $isProfilePath = $null } 
                         else { 
-                            $destProfilePath = Join-Path -Path $profileDirPath -ChildPath $profileDirectory.split("\")[-1]
+                            $destProfilePath = Join-Path -Path $profileDirPath -ChildPath $username
                             if (Test-Path $destProfilePath) { Write-Output "The destination path $destProfilePath already exists. Please choose a different path to prevent overwrite."; $isProfilePath = $null }
                             else {
                                 try { New-Item -ItemType Directory -Path $destProfilePath }
