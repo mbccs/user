@@ -593,7 +593,7 @@ if ($isDomain -match "Y"){
             Write-Output " "
             $intent = "`nWhat do you want to do with the target users HOME Directory: "
             $intent += "`n`t[P]ermanently delete the directory "; $homeDirIntentResponse += "P/"
-            $intent += "`n`t[T]ransfer the directory another user as a subfolder "; $homeDirIntentResponse +="T/" 
+            #$intent += "`n`t[T]ransfer the directory another user as a subfolder "; $homeDirIntentResponse +="T/" 
             $intent += "`n`t[M]ove the directory to a location on a shared network drive, or "; $homeDirIntentResponse +="M/" 
             $intent += "`n`t[Z]ip the directory for archiving`n"; $homeDirIntentResponse += "Z" 
 
@@ -648,7 +648,7 @@ if ($isDomain -match "Y"){
             Write-Output " "
             $intent = "`nWhat do you want to do with the target users Roaming Profile: "
             $intent += "`n`t[P]ermanently delete the directory "; $profileIntentResponse += "P/"
-            $intent += "`n`t[T]ransfer the directory another user as a subfolder of their Home Directory "; $profileIntentResponse +="T/" 
+            #$intent += "`n`t[T]ransfer the directory another user as a subfolder of their Home Directory "; $profileIntentResponse +="T/" 
             $intent += "`n`t[M]ove the directory to a location on a shared network drive, or "; $profileIntentResponse +="D/" 
             $intent += "`n`t[Z]ip the directory for archiving`n"; $profileIntentResponse += "Z" 
 
