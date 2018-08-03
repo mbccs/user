@@ -835,9 +835,9 @@ if ($isLicenseRemoved -match "Y"){
     }
 }
 
-#if ($ExSession -match "Open") { Remove-PSSession $ExSession }
-#if ($ExoSession -match "Open") { Remove-PSSession $ExoSession }
-#if ($EopSession -match "Open") { Remove-PSSession $EopSession }
+if ($ExSession -match "Open") { Remove-PSSession $ExSession }
+if ($ExoSession -match "Open") { Remove-PSSession $ExoSession }
+if ($EopSession -match "Open") { Remove-PSSession $EopSession }
 
 switch ($homeDirIntent) {
     "P" {
