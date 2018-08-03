@@ -119,9 +119,9 @@ function ConnectMsol {
                 Start-Process msiexec.exe -ArgumentList $ArgsInstallation -Wait -Verbose
                 Write-Host "Completed installation of $($filename)"
 
-                Write-Host "Installing NuGet Package Provider..."
-                Start-Process Install-PackageProvider -Name NuGet -Force -Wait
-                Write-Host "Installed NuGet Package Provider."
+                #Write-Host "Installing NuGet Package Provider..."
+                #Start-Process Install-PackageProvider -Name NuGet -Force -Wait
+                #Write-Host "Installed NuGet Package Provider."
                 Write-Host "Installing MSOnline Module..."
                 Install-Module MSOnline -Confirm:$false -Force -Wait
                 Write-Host "Installed MSOnline Module."
@@ -178,7 +178,7 @@ function Sync-Password($adsync) {
     }        
 }
 
-Function BlockUser($upn) {
+Function BlockUser($upn) { #only works for O365 - need to remove from Exchange on premworkflow
     Set-MsolUser –UserPrincipalName $upn –blockcredential $true
 }
 
@@ -835,9 +835,9 @@ if ($isLicenseRemoved -match "Y"){
     }
 }
 
-if ($ExSession -match "Open") { Remove-PSSession $ExSession }
-if ($ExoSession -match "Open") { Remove-PSSession $ExoSession }
-if ($EopSession -match "Open") { Remove-PSSession $EopSession }
+#if ($ExSession -match "Open") { Remove-PSSession $ExSession }
+#if ($ExoSession -match "Open") { Remove-PSSession $ExoSession }
+#if ($EopSession -match "Open") { Remove-PSSession $EopSession }
 
 switch ($homeDirIntent) {
     "P" {
